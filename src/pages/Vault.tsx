@@ -7,8 +7,14 @@ import UploadZone from "@/components/UploadZone";
 import FileCard from "@/components/FileCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Search, Shield, LogOut, HardDrive, FileCheck } from "lucide-react";
+import {
+  Search, Shield, LogOut, HardDrive, FileCheck, KeyRound, Lock,
+} from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 
 interface FileRecord {
   id: string;
@@ -29,6 +35,21 @@ const Vault = () => {
   const [uploading, setUploading] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(true);
 
+  // Secret key state
+  const [secretKey, setSecretKey] = useState("");
+  const [secretKeyInput, setSecretKeyInput] = useState("");
+  const [isUnlocked, setIsUnlocked] = useState(false);
+
+  // Download dialog state
+  const [downloadDialog, setDownloadDialog] = useState<{
+    open: boolean;
+    storagePath: string;
+    fileName: string;
+    mimeType: string | null;
+  }>({ open: false, storagePath: "", fileName: "", mimeType: null });
+  const [downloadKeyInput, setDownloadKeyInput] = useState("");
+  const [downloading, setDownloading] = useState(false);
+
   useEffect(() => {
     if (!authLoading && !user) {
       navigate("/auth");
@@ -36,8 +57,8 @@ const Vault = () => {
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (user) fetchFiles();
-  }, [user]);
+    if (user && isUnlocked) fetchFiles();
+  }, [user, isUnlocked]);
 
   const fetchFiles = async () => {
     const { data, error } = await supabase
@@ -53,14 +74,25 @@ const Vault = () => {
     setLoadingFiles(false);
   };
 
+  const handleUnlock = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (secretKeyInput.length < 4) {
+      toast.error("Secret key must be at least 4 characters");
+      return;
+    }
+    setSecretKey(secretKeyInput);
+    setIsUnlocked(true);
+    toast.success("Vault unlocked!");
+  };
+
   const handleUpload = async (selectedFiles: File[]) => {
     if (!user) return;
     setUploading(true);
     try {
       for (const file of selectedFiles) {
-        await uploadFile(file, user.id);
+        await uploadFile(file, user.id, secretKey);
       }
-      toast.success(`${selectedFiles.length} file(s) uploaded & encrypted`);
+      toast.success(`${selectedFiles.length} file(s) encrypted & uploaded`);
       fetchFiles();
     } catch (error: any) {
       toast.error(error.message || "Upload failed");
@@ -69,11 +101,30 @@ const Vault = () => {
     }
   };
 
-  const handleDownload = async (storagePath: string, fileName: string) => {
+  const openDownloadDialog = (storagePath: string, fileName: string, mimeType: string | null) => {
+    setDownloadKeyInput("");
+    setDownloadDialog({ open: true, storagePath, fileName, mimeType });
+  };
+
+  const handleDownloadConfirm = async () => {
+    if (!downloadKeyInput) {
+      toast.error("Please enter your secret key");
+      return;
+    }
+    setDownloading(true);
     try {
-      await downloadFile(storagePath, fileName);
+      await downloadFile(
+        downloadDialog.storagePath,
+        downloadDialog.fileName,
+        downloadDialog.mimeType,
+        downloadKeyInput
+      );
+      setDownloadDialog({ open: false, storagePath: "", fileName: "", mimeType: null });
+      toast.success("File decrypted & downloaded");
     } catch {
-      toast.error("Download failed");
+      toast.error("Decryption failed — wrong secret key?");
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -97,6 +148,54 @@ const Vault = () => {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--gradient-hero)" }}>
         <Shield className="w-8 h-8 text-primary animate-glow-pulse" />
+      </div>
+    );
+  }
+
+  // Secret key gate screen
+  if (!isUnlocked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "var(--gradient-hero)" }}>
+        <div className="w-full max-w-md">
+          <div className="glass rounded-2xl p-8">
+            <div className="flex items-center justify-center mb-6">
+              <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center glow-primary">
+                <KeyRound className="w-7 h-7 text-primary" />
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold text-center mb-1">Enter Secret Key</h1>
+            <p className="text-muted-foreground text-center mb-8 text-sm">
+              Your secret key is used to encrypt & decrypt all files. Keep it safe — it is never stored on our servers.
+            </p>
+            <form onSubmit={handleUnlock} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="secretKey">Secret Key</Label>
+                <Input
+                  id="secretKey"
+                  type="password"
+                  value={secretKeyInput}
+                  onChange={(e) => setSecretKeyInput(e.target.value)}
+                  placeholder="Enter your secret key..."
+                  required
+                  minLength={4}
+                  autoFocus
+                />
+              </div>
+              <Button type="submit" className="w-full glow-primary">
+                <Lock className="w-4 h-4 mr-2" />
+                Unlock Vault
+              </Button>
+            </form>
+            <div className="mt-4 text-center">
+              <button
+                onClick={() => { signOut(); navigate("/"); }}
+                className="text-sm text-muted-foreground hover:text-primary transition-colors"
+              >
+                Sign out instead
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -187,13 +286,52 @@ const Vault = () => {
                 mimeType={file.mime_type}
                 createdAt={file.created_at}
                 isEncrypted={file.is_encrypted}
-                onDownload={() => handleDownload(file.storage_path, file.original_name)}
+                onDownload={() => openDownloadDialog(file.storage_path, file.original_name, file.mime_type)}
                 onDelete={() => handleDelete(file.id, file.storage_path)}
               />
             ))}
           </div>
         )}
       </main>
+
+      {/* Download secret key dialog */}
+      <Dialog open={downloadDialog.open} onOpenChange={(open) => {
+        if (!open) setDownloadDialog({ open: false, storagePath: "", fileName: "", mimeType: null });
+      }}>
+        <DialogContent className="glass border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-primary" />
+              Enter Secret Key to Decrypt
+            </DialogTitle>
+            <DialogDescription>
+              Enter the secret key you used when uploading to decrypt "{downloadDialog.fileName}".
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="downloadKey">Secret Key</Label>
+            <Input
+              id="downloadKey"
+              type="password"
+              value={downloadKeyInput}
+              onChange={(e) => setDownloadKeyInput(e.target.value)}
+              placeholder="Enter your secret key..."
+              onKeyDown={(e) => e.key === "Enter" && handleDownloadConfirm()}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handleDownloadConfirm}
+              disabled={downloading || !downloadKeyInput}
+              className="glow-primary"
+            >
+              <Lock className="w-4 h-4 mr-2" />
+              {downloading ? "Decrypting..." : "Decrypt & Download"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

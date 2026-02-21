@@ -1,13 +1,16 @@
 import { supabase } from "@/integrations/supabase/client";
+import { encryptFile, decryptFile } from "@/lib/crypto";
 
-export async function uploadFile(file: File, userId: string) {
+export async function uploadFile(file: File, userId: string, secretKey: string) {
+  const encryptedBlob = await encryptFile(file, secretKey);
+
   const fileExt = file.name.split('.').pop();
-  const fileName = `${crypto.randomUUID()}.${fileExt}`;
+  const fileName = `${crypto.randomUUID()}.${fileExt}.enc`;
   const storagePath = `${userId}/${fileName}`;
 
   const { error: uploadError } = await supabase.storage
     .from('vault-files')
-    .upload(storagePath, file);
+    .upload(storagePath, encryptedBlob);
 
   if (uploadError) throw uploadError;
 
@@ -18,19 +21,22 @@ export async function uploadFile(file: File, userId: string) {
     size: file.size,
     mime_type: file.type,
     storage_path: storagePath,
+    is_encrypted: true,
   });
 
   if (dbError) throw dbError;
 }
 
-export async function downloadFile(storagePath: string, fileName: string) {
+export async function downloadFile(storagePath: string, fileName: string, mimeType: string | null, secretKey: string) {
   const { data, error } = await supabase.storage
     .from('vault-files')
     .download(storagePath);
 
   if (error) throw error;
 
-  const url = URL.createObjectURL(data);
+  const decryptedBlob = await decryptFile(data, secretKey, mimeType || "application/octet-stream");
+
+  const url = URL.createObjectURL(decryptedBlob);
   const a = document.createElement('a');
   a.href = url;
   a.download = fileName;
