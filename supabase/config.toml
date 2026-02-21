@@ -1,1 +1,7 @@
 project_id = "rguduwuerzxsitpyremo"
+
+[functions.send-encrypted-email]
+verify_jwt = false
+
+[functions.get-shared-file]
+verify_jwt = false

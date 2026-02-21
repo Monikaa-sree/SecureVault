@@ -1,4 +1,4 @@
-import { Download, Trash2, Shield, Image, FileText, Music, Video, File, Archive, Table } from "lucide-react";
+import { Download, Trash2, Shield, Image, FileText, Music, Video, File, Archive, Table, Mail } from "lucide-react";
 import { formatFileSize, getFileIcon } from "@/lib/supabase-helpers";
 import { Button } from "@/components/ui/button";
 
@@ -11,6 +11,7 @@ interface FileCardProps {
   isEncrypted: boolean;
   onDownload: () => void;
   onDelete: () => void;
+  onShare?: () => void;
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -23,11 +24,14 @@ const iconMap: Record<string, React.ReactNode> = {
   file: <File className="w-5 h-5" />,
 };
 
-const FileCard = ({ name, size, mimeType, createdAt, isEncrypted, onDownload, onDelete }: FileCardProps) => {
+const FileCard = ({ name, size, mimeType, createdAt, isEncrypted, onDownload, onDelete, onShare }: FileCardProps) => {
   const iconType = getFileIcon(mimeType);
 
   return (
-    <div className="glass-hover rounded-xl p-4 group animate-fade-in">
+    <div
+      className="glass-hover rounded-xl p-4 group animate-fade-in cursor-pointer"
+      onClick={onDownload}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0 flex-1">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 text-primary">
@@ -52,10 +56,15 @@ const FileCard = ({ name, size, mimeType, createdAt, isEncrypted, onDownload, on
         </div>
 
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onDownload}>
+          {onShare && (
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onShare(); }}>
+              <Mail className="w-4 h-4" />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onDownload(); }}>
             <Download className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-destructive" onClick={onDelete}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(); }}>
             <Trash2 className="w-4 h-4" />
           </Button>
         </div>
