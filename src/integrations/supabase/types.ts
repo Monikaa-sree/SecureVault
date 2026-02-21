@@ -83,6 +83,53 @@ export type Database = {
         }
         Relationships: []
       }
+      shared_files: {
+        Row: {
+          created_at: string
+          expires_at: string
+          file_id: string
+          file_name: string
+          id: string
+          mime_type: string | null
+          recipient_email: string
+          sender_user_id: string
+          share_token: string
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          file_id: string
+          file_name: string
+          id?: string
+          mime_type?: string | null
+          recipient_email: string
+          sender_user_id: string
+          share_token?: string
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          file_id?: string
+          file_name?: string
+          id?: string
+          mime_type?: string | null
+          recipient_email?: string
+          sender_user_id?: string
+          share_token?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shared_files_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
