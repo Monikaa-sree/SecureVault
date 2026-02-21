@@ -7,19 +7,27 @@ const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
 const ITERATIONS = 100_000;
 
+/** Convert a Uint8Array to a plain ArrayBuffer (avoids SharedArrayBuffer issues). */
+function toArrayBuffer(arr: Uint8Array): ArrayBuffer {
+  const buf = new ArrayBuffer(arr.byteLength);
+  new Uint8Array(buf).set(arr);
+  return buf;
+}
+
 async function deriveKey(secret: string, salt: Uint8Array): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const rawKey = encoder.encode(secret);
+
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    rawKey.buffer as ArrayBuffer,
+    toArrayBuffer(rawKey),
     "PBKDF2",
     false,
     ["deriveKey"]
   );
 
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt: salt.buffer as ArrayBuffer, iterations: ITERATIONS, hash: "SHA-256" },
+    { name: "PBKDF2", salt: toArrayBuffer(salt), iterations: ITERATIONS, hash: "SHA-256" },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false,
@@ -35,18 +43,18 @@ export async function encryptFile(file: File, secret: string): Promise<Blob> {
 
   const plaintext = await file.arrayBuffer();
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
     key,
     plaintext
   );
 
   // Combine salt + iv + ciphertext
-  const combined = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
+  const combined = new Uint8Array(SALT_LENGTH + IV_LENGTH + ciphertext.byteLength);
   combined.set(salt, 0);
-  combined.set(iv, salt.length);
-  combined.set(new Uint8Array(ciphertext), salt.length + iv.length);
+  combined.set(iv, SALT_LENGTH);
+  combined.set(new Uint8Array(ciphertext), SALT_LENGTH + IV_LENGTH);
 
-  return new Blob([combined], { type: "application/octet-stream" });
+  return new Blob([toArrayBuffer(combined)], { type: "application/octet-stream" });
 }
 
 /** Decrypt an encrypted Blob back to a Blob with the original mime type. */
@@ -55,18 +63,18 @@ export async function decryptFile(
   secret: string,
   mimeType: string
 ): Promise<Blob> {
-  const data = new Uint8Array(await encryptedBlob.arrayBuffer());
+  const raw = new Uint8Array(await encryptedBlob.arrayBuffer());
 
-  const salt = data.slice(0, SALT_LENGTH);
-  const iv = data.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
-  const ciphertext = data.slice(SALT_LENGTH + IV_LENGTH);
+  const salt = raw.slice(0, SALT_LENGTH);
+  const iv = raw.slice(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
+  const ciphertext = raw.slice(SALT_LENGTH + IV_LENGTH);
 
   const key = await deriveKey(secret, salt);
 
   const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
     key,
-    ciphertext
+    toArrayBuffer(ciphertext)
   );
 
   return new Blob([plaintext], { type: mimeType || "application/octet-stream" });
